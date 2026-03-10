@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { startSession, endSession, addNoteEvents, db, listUsers, createUser, getSetting, setSetting, deleteUserCascade, migrateToUUID, syncToSupabase, getAllSongs, syncSongs } from './db';
+import { startSession, endSession, addNoteEvents, db, listUsers, createUser, getSetting, setSetting, deleteUserCascade, migrateToUUID, syncToSupabase } from './db';
 
 interface NoteInfo {
     time: number;
