@@ -135,6 +135,53 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+#start-overlay .overlay-content {
+  position: relative;
+  width: 760px;
+  max-width: 98%;
+  max-height: 92%;
+  overflow-y: auto;
+  padding: 52px 20px 24px;
+}
+
+#start-overlay .posture-select {
+  margin: 8px auto 14px;
+}
+
+#start-overlay .train-select {
+  margin: 6px auto 16px;
+}
+
+#start-overlay .posture-select,
+#start-overlay .train-select {
+  background: rgba(15, 23, 42, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  padding: 14px 14px 12px;
+}
+
+#startBtn.main-btn {
+  padding: 16px 56px;
+  font-size: 1.7rem;
+}
+
+.user-chip-btn {
+  background: rgba(56, 189, 248, 0.12);
+  color: var(--text-main);
+  border: 1px solid rgba(56, 189, 248, 0.5);
+  padding: 10px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 1.05rem;
+  font-weight: 700;
+  backdrop-filter: blur(10px);
+}
+
+.user-chip-btn:hover {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: rgba(56, 189, 248, 0.75);
+}
+
 .overlay-content h2 {
   font-size: 2.8rem;
   margin-bottom: 20px;
@@ -216,6 +263,124 @@ body {
   font-size: 1.1rem;
   margin-top: 10px;
   font-weight: 500;
+}
+
+/* 手姿势选择 */
+.posture-select {
+  margin: 16px auto 24px;
+}
+.posture-title {
+  font-size: 1.2rem;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+.posture-options {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.posture-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 2px solid transparent;
+  cursor: pointer;
+  color: var(--text-main);
+}
+#start-overlay .posture-options {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  flex-wrap: nowrap;
+}
+
+#start-overlay .posture-option {
+  width: calc((100% - 14px) / 2);
+  max-width: 360px;
+  padding: 8px;
+  gap: 6px;
+  overflow: hidden;
+}
+
+#start-overlay .posture-option span {
+  font-size: 0.98rem;
+}
+
+.posture-option img {
+  width: 100%;
+  max-width: none;
+  height: auto;
+  transform: translateX(-1%);
+  background: transparent;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.posture-option.selected {
+  border-color: var(--secondary-color);
+  box-shadow: 0 0 0 4px rgba(129, 140, 248, 0.15);
+}
+
+/* 训练模式选择 */
+.train-select {
+  margin: 8px auto 24px;
+}
+.train-title {
+  font-size: 1.2rem;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+.train-modes {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+.train-mode {
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 2px solid transparent;
+  cursor: pointer;
+  color: var(--text-main);
+  font-weight: 700;
+}
+.train-mode.selected {
+  border-color: var(--secondary-color);
+  box-shadow: 0 0 0 4px rgba(129, 140, 248, 0.15);
+}
+.single-finger-panel {
+  margin-top: 14px;
+}
+.single-finger-panel.hidden {
+  display: none;
+}
+.single-finger-title {
+  font-size: 1.05rem;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+.single-finger-options {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.finger-option {
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 2px solid transparent;
+  cursor: pointer;
+  color: var(--text-main);
+  font-weight: 700;
+}
+.finger-option.selected {
+  border-color: var(--secondary-color);
+  box-shadow: 0 0 0 4px rgba(129, 140, 248, 0.15);
 }
 
 /* 用户界面特定样式优化 */
@@ -522,4 +687,3 @@ body {
   margin: 0;
   color: var(--primary-color);
 }
-

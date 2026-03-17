@@ -32,6 +32,14 @@ export interface Session {
   songId: string
   songName: string
   densityLevel: number
+  trainingMode?: 'fourFinger' | 'singleFinger'
+  targetFinger?: 'index' | 'middle' | 'ring' | 'pinky'
+  handPosture?: 'indexRight' | 'indexLeft'
+  npmCap?: number
+  minGapMs?: number
+  chartAlgoVersion?: number
+  masterChartLevel?: number
+  generatedNoteCount?: number
   startedAt: string
   endedAt?: string
   durationSec?: number
@@ -127,6 +135,11 @@ export class RehabDB extends Dexie {
     // 版本 4：增加 songs 表用于缓存动态歌曲
     this.version(4).stores({
       songs: 'id, name, updatedAt'
+    })
+
+    // 版本 5：为 sessions 增加训练模式与指头索引，便于筛选统计
+    this.version(5).stores({
+      sessions: 'id, userId, startedAt, synced, trainingMode, targetFinger'
     })
   }
 }
@@ -230,6 +243,14 @@ export async function startSession(input: {
   songId: string
   songName: string
   densityLevel: number
+  trainingMode?: Session['trainingMode']
+  targetFinger?: Session['targetFinger']
+  handPosture?: Session['handPosture']
+  npmCap?: number
+  minGapMs?: number
+  chartAlgoVersion?: number
+  masterChartLevel?: number
+  generatedNoteCount?: number
 }) {
   const id = genId()
   const now = getBeijingTimeISO()
@@ -368,30 +389,67 @@ export async function syncToSupabase() {
     
     console.log(`发现 ${unsyncedSessionsRaw.length} 个未同步会话，其中 ${unsyncedSessions.length} 个符合外键同步条件`);
     if (unsyncedSessions.length > 0) {
-      const { data, error } = await supabase.from('sessions').upsert(
-        unsyncedSessions.map(s => ({
-          id: s.id,
-          user_id: s.userId,
-          song_id: s.songId,
-          song_name: s.songName,
-          density_level: s.densityLevel,
-          started_at: s.startedAt,
-          ended_at: s.endedAt,
-          duration_sec: s.durationSec,
-          score: s.score,
-          hit_rate: s.hitRate,
-          perfect_count: s.perfectCount,
-          good_count: s.goodCount,
-          miss_count: s.missCount,
-          avg_offset_ms: s.avgOffsetMs,
-          std_offset_ms: s.stdOffsetMs,
-          max_combo: s.maxCombo
-        }))
-      )
-      if (error) {
-        console.error('同步会话失败:', error);
+      const payloadV2 = unsyncedSessions.map(s => ({
+        id: s.id,
+        user_id: s.userId,
+        song_id: s.songId,
+        song_name: s.songName,
+        density_level: s.densityLevel,
+        training_mode: s.trainingMode,
+        target_finger: s.targetFinger,
+        hand_posture: s.handPosture,
+        npm_cap: s.npmCap,
+        min_gap_ms: s.minGapMs,
+        chart_algo_version: s.chartAlgoVersion,
+        master_chart_level: s.masterChartLevel,
+        generated_note_count: s.generatedNoteCount,
+        started_at: s.startedAt,
+        ended_at: s.endedAt,
+        duration_sec: s.durationSec,
+        score: s.score,
+        hit_rate: s.hitRate,
+        perfect_count: s.perfectCount,
+        good_count: s.goodCount,
+        miss_count: s.missCount,
+        avg_offset_ms: s.avgOffsetMs,
+        std_offset_ms: s.stdOffsetMs,
+        max_combo: s.maxCombo
+      }))
+      const payloadV1 = unsyncedSessions.map(s => ({
+        id: s.id,
+        user_id: s.userId,
+        song_id: s.songId,
+        song_name: s.songName,
+        density_level: s.densityLevel,
+        started_at: s.startedAt,
+        ended_at: s.endedAt,
+        duration_sec: s.durationSec,
+        score: s.score,
+        hit_rate: s.hitRate,
+        perfect_count: s.perfectCount,
+        good_count: s.goodCount,
+        miss_count: s.missCount,
+        avg_offset_ms: s.avgOffsetMs,
+        std_offset_ms: s.stdOffsetMs,
+        max_combo: s.maxCombo
+      }))
+      const res2 = await supabase.from('sessions').upsert(payloadV2)
+      if (res2.error) {
+        const msg = (res2.error as any)?.message || String(res2.error)
+        const shouldFallback = msg.includes('column') || msg.includes('does not exist') || msg.includes('schema')
+        if (shouldFallback) {
+          const res1 = await supabase.from('sessions').upsert(payloadV1)
+          if (res1.error) {
+            console.error('同步会话失败:', res1.error)
+          } else {
+            console.log('同步会话成功:', res1.data)
+            await db.sessions.bulkUpdate(unsyncedSessions.map(s => ({ key: s.id, changes: { synced: 1 } })))
+          }
+        } else {
+          console.error('同步会话失败:', res2.error)
+        }
       } else {
-        console.log('同步会话成功:', data);
+        console.log('同步会话成功:', res2.data)
         await db.sessions.bulkUpdate(unsyncedSessions.map(s => ({ key: s.id, changes: { synced: 1 } })))
       }
     }

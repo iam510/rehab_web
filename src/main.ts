@@ -4,18 +4,26 @@ import { GameScene } from './GameScene';
 import { registerSW } from 'virtual:pwa-register';
 import { syncSongs, getAllSongs } from './db';
 
-// 强制注销旧的 Service Worker 以清理顽固缓存
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations().then((registrations) => {
-        for (const registration of registrations) {
-            registration.unregister();
-            console.log('已强制注销 Service Worker:', registration);
-        }
-    });
+if (import.meta.env.DEV) {
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(async (registrations) => {
+            let changed = false;
+            for (const registration of registrations) {
+                const ok = await registration.unregister();
+                changed = changed || ok;
+            }
+            if ('caches' in window) {
+                const keys = await caches.keys();
+                await Promise.all(keys.map(k => caches.delete(k)));
+            }
+            if (changed) {
+                location.reload();
+            }
+        });
+    }
+} else {
+    registerSW({ immediate: true });
 }
-
-// 注册新的 PWA Service Worker
-registerSW({ immediate: true });
 
 async function initGame() {
     console.log('Main: 正在初始化数据库和歌曲列表...');

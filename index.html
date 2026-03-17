@@ -4,28 +4,28 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>康复音游 - Rehab Rhythm</title>
+    <title>康復音遊 - Rehab Rhythm</title>
   </head>
   <body>
     <div id="ui-container">
       <div class="header">
         <div class="settings">
           <div class="setting-item">
-            <label for="songSelect">🎵 选择歌曲</label>
+            <label for="songSelect">🎵 選擇歌曲</label>
             <select id="songSelect">
             </select>
           </div>
           <div class="setting-item">
-            <label for="densityRange">⚡ 练习难度: <span id="densityValue">中等</span></label>
+            <label for="densityRange">⚡ 練習難度：<span id="densityValue">中等</span></label>
             <input type="range" id="densityRange" min="1" max="4" value="3" step="1">
           </div>
           <div class="setting-item">
-            <label for="volumeRange">🔊 音乐音量: <span id="volumeValue">50</span>%</label>
+            <label for="volumeRange">🔊 音樂音量：<span id="volumeValue">50</span>%</label>
             <input type="range" id="volumeRange" min="0" max="100" value="50">
           </div>
         </div>
         <div style="display:flex; gap:12px; align-items:center;">
-          <button id="pauseBtn" class="action-btn">⏸ 暂停游戏</button>
+          <button id="pauseBtn" class="action-btn">⏸ 暫停遊戲</button>
         </div>
       </div>
 
@@ -36,35 +36,62 @@
         <div id="start-overlay" class="overlay">
           <div class="overlay-content">
             <div style="position:absolute; right:16px; top:16px;">
-              <button id="userBtn" class="main-btn">用户</button>
+              <button id="userBtn" class="user-chip-btn">用戶</button>
             </div>
-            <h2>准备好开始演奏了吗？</h2>
-            <p>使用 <strong>D, F, J, K</strong> 键击打音符</p>
-            <button id="startBtn" class="main-btn">开始游戏</button>
+            <div class="posture-select">
+              <div class="posture-title">選擇遊玩手姿勢</div>
+              <div class="posture-options">
+                <button id="postureIndexLeft" class="posture-option" data-posture="indexLeft" title="食指在左（KJFD）">
+                  <img src="/assets/images/posture_index_left.png" alt="食指在左（KJFD）" />
+                  <span>食指在左（KJFD）</span>
+                </button>
+                <button id="postureIndexRight" class="posture-option selected" data-posture="indexRight" title="食指在右（DFJK）">
+                  <img src="/assets/images/posture_index_right.png" alt="食指在右（DFJK）" />
+                  <span>食指在右（DFJK）</span>
+                </button>
+              </div>
+            </div>
+            <div class="train-select">
+              <div class="train-title">選擇訓練模式</div>
+              <div class="train-modes">
+                <button id="trainModeFour" class="train-mode selected" data-mode="fourFinger">四指訓練</button>
+                <button id="trainModeSingle" class="train-mode" data-mode="singleFinger">單指訓練</button>
+              </div>
+              <div id="singleFingerPanel" class="single-finger-panel hidden">
+                <div class="single-finger-title">選擇訓練指頭</div>
+                <div class="single-finger-options">
+                  <button class="finger-option selected" id="fingerIndex" data-finger="index">食指</button>
+                  <button class="finger-option" id="fingerMiddle" data-finger="middle">中指</button>
+                  <button class="finger-option" id="fingerRing" data-finger="ring">無名指</button>
+                  <button class="finger-option" id="fingerPinky" data-finger="pinky">小拇指</button>
+                </div>
+              </div>
+            </div>
+            <button id="startBtn" class="main-btn">開始遊戲</button>
           </div>
         </div>
 
         <!-- 覆盖层：暂停界面 -->
         <div id="pause-overlay" class="overlay hidden">
           <div class="overlay-content">
-            <h2>游戏已暂停</h2>
-            <p>您可以调整上方设置，或休息一下</p>
-            <button id="resumeBtn" class="main-btn">继续游戏</button>
-            <button id="endBtn" class="main-btn">结束游戏</button>
+            <h2>遊戲已暫停</h2>
+            <p>您可以調整上方設定，或休息一下</p>
+            <button id="resumeBtn" class="main-btn">繼續遊戲</button>
+            <button id="endBtn" class="main-btn">結束遊戲</button>
           </div>
         </div>
 
         <!-- 覆盖层：游戏结束界面 -->
         <div id="game-over-overlay" class="overlay hidden">
           <div class="overlay-content">
-            <h2>训练结束！</h2>
+            <h2>訓練結束！</h2>
             <div class="final-score-container">
               <span class="score-label">本次得分</span>
               <span id="finalScore" class="score-value">0</span>
             </div>
-            <p id="evaluationText">很棒的尝试！继续坚持！</p>
-            <button id="restartBtn" class="main-btn">再来一局</button>
-            <button id="returnHomeBtn" class="main-btn" style="margin-left:8px;">返回主页</button>
+            <p id="evaluationText">很棒的嘗試！繼續堅持！</p>
+            <button id="restartBtn" class="main-btn">再來一局</button>
+            <button id="returnHomeBtn" class="main-btn" style="margin-left:8px;">返回主頁</button>
           </div>
         </div>
       </div>
@@ -73,32 +100,32 @@
       <div id="user-overlay" class="overlay hidden">
         <div class="overlay-content user-panel-content">
           <div class="user-panel-header">
-            <h2>👤 用户中心</h2>
+            <h2>👤 用戶中心</h2>
             <button id="userCloseBtn" class="close-icon-btn">×</button>
           </div>
 
           <div class="user-selection-area">
             <div class="field-group">
-              <label for="userManageSelect">切换当前训练者</label>
+              <label for="userManageSelect">切換目前訓練者</label>
               <div class="select-wrapper">
                 <select id="userManageSelect" class="large-select"></select>
               </div>
             </div>
             <div class="user-action-group">
               <button id="userNewBtn" class="sub-btn primary">✨ 新建</button>
-              <button id="userDeleteBtn" class="sub-btn danger">🗑️ 删除</button>
+              <button id="userDeleteBtn" class="sub-btn danger">🗑️ 刪除</button>
             </div>
           </div>
 
           <div id="userManageForm" class="user-form-panel hidden">
-            <h3>创建新用户</h3>
+            <h3>建立新用戶</h3>
             <div class="form-grid">
               <div class="form-item full">
                 <label>姓名</label>
-                <input id="mUserName" placeholder="请输入姓名" />
+                <input id="mUserName" placeholder="請輸入姓名" />
               </div>
               <div class="form-item">
-                <label>性别</label>
+                <label>性別</label>
                 <select id="mUserSex">
                   <option value="">未指定</option>
                   <option value="male">男</option>
@@ -107,8 +134,8 @@
                 </select>
               </div>
               <div class="form-item">
-                <label>年龄</label>
-                <input id="mUserAge" type="number" min="0" max="120" placeholder="岁" />
+                <label>年齡</label>
+                <input id="mUserAge" type="number" min="0" max="120" placeholder="歲" />
               </div>
               <div class="form-item">
                 <label>主用手</label>
@@ -120,13 +147,13 @@
                 </select>
               </div>
               <div class="form-item">
-                <label>康复阶段</label>
+                <label>康復階段</label>
                 <input id="mUserPhase" placeholder="如：早期" />
               </div>
             </div>
             <div id="mUserMsg" class="form-msg"></div>
             <div class="form-actions">
-              <button id="mUserCreateBtn" class="sub-btn primary">确认保存</button>
+              <button id="mUserCreateBtn" class="sub-btn primary">確認保存</button>
             </div>
           </div>
 
@@ -135,13 +162,13 @@
           </div>
 
           <div class="user-records-section">
-            <h3>📈 历史训练记录</h3>
+            <h3>📈 歷史訓練記錄</h3>
             <div id="userSessions" class="records-list"></div>
           </div>
         </div>
       </div>
 
-      <div class="instructions">建议佩戴康复手套或使用键盘 D, F, J, K 进行练习</div>
+      <div class="instructions">建議佩戴康復手套或使用鍵盤 D, F, J, K 進行練習</div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
