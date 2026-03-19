@@ -56,7 +56,7 @@ async function initGame() {
     const config: Phaser.Types.Core.GameConfig = {
         type: Phaser.AUTO,
         width: 800,
-        height: 600,
+        height: 680,
         parent: 'app',
         physics: {
             default: 'arcade',

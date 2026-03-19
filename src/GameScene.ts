@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { startSession, endSession, addNoteEvents, db, listUsers, createUser, getSetting, setSetting, deleteUserCascade, migrateToUUID, syncToSupabase } from './db';
+import { startSession, endSession, addNoteEvents, db, listUsers, createUser, getSetting, setSetting, deleteUserCascade, migrateToUUID, syncToSupabase, type HandPosture } from './db';
 
 interface NoteInfo {
     time: number;
@@ -22,7 +22,7 @@ const generatedChartCache = new Map<string, NoteInfo[]>();
 export class GameScene extends Phaser.Scene {
     private lanes = [200, 333, 466, 600];
     private laneKeys = ['D', 'F', 'J', 'K'];
-    private handPosture: 'indexRight' | 'indexLeft' = 'indexRight';
+    private handPosture: HandPosture = 'rightUp';
     private laneLabels: Phaser.GameObjects.Text[] = [];
     private laneLines: Phaser.GameObjects.Rectangle[] = [];
     private notes: Phaser.GameObjects.Rectangle[] = [];
@@ -30,6 +30,9 @@ export class GameScene extends Phaser.Scene {
     private hitEffects!: Phaser.GameObjects.Group;
     private trainingMode: TrainingMode = 'fourFinger';
     private targetFinger: FingerName = 'index';
+    private labelStripHeight = 80;
+    private playHeight = 600;
+    private playMask?: Phaser.Display.Masks.GeometryMask;
     
     private score = 0;
     private combo = 0;
@@ -141,7 +144,15 @@ export class GameScene extends Phaser.Scene {
         });
 
         const { width, height } = this.scale;
+        this.playHeight = height - this.labelStripHeight;
         this.add.rectangle(width / 2, height / 2, width, height, 0x0f0f1b);
+        this.add.rectangle(width / 2, this.playHeight + this.labelStripHeight / 2, width, this.labelStripHeight, 0x070b14, 0.92);
+
+        const maskShape = this.make.graphics({ x: 0, y: 0 });
+        maskShape.setVisible(false);
+        maskShape.fillStyle(0xffffff, 1);
+        maskShape.fillRect(0, 0, width, this.playHeight);
+        this.playMask = maskShape.createGeometryMask();
 
         const judgeBg = this.add.graphics();
         const judgeColor = 0x4cc9f0;
@@ -151,22 +162,24 @@ export class GameScene extends Phaser.Scene {
         judgeBg.fillGradientStyle(judgeColor, judgeColor, judgeColor, judgeColor, 0, 0, judgeAlpha, judgeAlpha);
         judgeBg.fillRect(left, 0, judgeAreaWidth, this.judgeY);
         judgeBg.fillGradientStyle(judgeColor, judgeColor, judgeColor, judgeColor, judgeAlpha, judgeAlpha, 0, 0);
-        judgeBg.fillRect(left, this.judgeY, judgeAreaWidth, height - this.judgeY);
+        judgeBg.fillRect(left, this.judgeY, judgeAreaWidth, Math.max(0, this.playHeight - this.judgeY));
 
         this.hitSound = this.sound.add('hit', { volume: 0.8 });
 
         const fingerLabels = this.getFingerLabels();
         this.lanes.forEach((x, i) => {
-            const laneLine = this.add.rectangle(x, height / 2, 2, height, 0xffffff, 0.1);
+            const laneLine = this.add.rectangle(x, this.playHeight / 2, 2, this.playHeight, 0xffffff, 0.1);
+            if (this.playMask) laneLine.setMask(this.playMask);
             this.laneLines.push(laneLine);
-            const glow = this.add.rectangle(x, height / 2, 100, height, 0x4361ee, 0);
+            const glow = this.add.rectangle(x, this.playHeight / 2, 100, this.playHeight, 0x4361ee, 0);
+            if (this.playMask) glow.setMask(this.playMask);
             this.laneGlows.push(glow);
-            const label = this.add.text(x, height - 40, fingerLabels[i], {
-                fontSize: '28px', fontStyle: 'bold', color: '#4cc9f0'
+            const label = this.add.text(x, this.playHeight + this.labelStripHeight / 2, fingerLabels[i], {
+                fontSize: '26px', fontStyle: 'bold', color: '#4cc9f0'
             }).setOrigin(0.5);
             this.laneLabels.push(label);
 
-            const clickZone = this.add.rectangle(x, height / 2, 100, height, 0x000000, 0.01)
+            const clickZone = this.add.rectangle(x, this.playHeight / 2, 100, this.playHeight, 0x000000, 0.01)
                 .setInteractive({ useHandCursor: true });
             
             clickZone.on('pointerdown', () => {
@@ -186,7 +199,16 @@ export class GameScene extends Phaser.Scene {
             });
         });
 
-        this.add.rectangle(width / 2, this.judgeY, 600, 4, 0x4cc9f0).setAlpha(0.6);
+        const perfectHeight = this.perfectRange * 2;
+        const perfectZone = this.add.rectangle(width / 2, this.judgeY, 600, perfectHeight, 0x4cc9f0, 0.15);
+        perfectZone.setStrokeStyle(2, 0x4cc9f0, 0.5);
+        if (this.playMask) perfectZone.setMask(this.playMask);
+
+        this.add.graphics()
+            .lineStyle(1, 0x4cc9f0, 0.3)
+            .lineBetween(width / 2 - 300, this.judgeY, width / 2 + 300, this.judgeY);
+
+
 
         this.scoreText = this.add.text(40, 40, 'SCORE: 0', { 
             fontSize: '42px', fontStyle: 'bold', color: '#fff', stroke: '#0f172a', strokeThickness: 6
@@ -198,9 +220,9 @@ export class GameScene extends Phaser.Scene {
             fontSize: '42px', fontStyle: 'bold', color: '#fff', stroke: '#0f172a', strokeThickness: 6
         }).setOrigin(1, 0);
 
-        this.feedbackText = this.add.text(width / 2, 300, '', { 
+        this.feedbackText = this.add.text(width / 2, this.judgeY, '', { 
             fontSize: '84px', fontStyle: 'bold', color: '#fbbf24', stroke: '#0f172a', strokeThickness: 8
-        }).setOrigin(0.5);
+        }).setOrigin(0.5).setAlpha(0);
 
         this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
             if (event.code === 'Space') {
@@ -264,8 +286,10 @@ export class GameScene extends Phaser.Scene {
         const densityInput = document.getElementById('densityRange') as HTMLInputElement;
         const volumeInput = document.getElementById('volumeRange') as HTMLInputElement;
         const songSelect = document.getElementById('songSelect') as HTMLSelectElement;
-        const postureRightBtn = document.getElementById('postureIndexRight') as HTMLButtonElement | null;
-        const postureLeftBtn = document.getElementById('postureIndexLeft') as HTMLButtonElement | null;
+        const postureRightUpBtn = document.getElementById('postureRightUp') as HTMLButtonElement | null;
+        const postureRightDownBtn = document.getElementById('postureRightDown') as HTMLButtonElement | null;
+        const postureLeftUpBtn = document.getElementById('postureLeftUp') as HTMLButtonElement | null;
+        const postureLeftDownBtn = document.getElementById('postureLeftDown') as HTMLButtonElement | null;
         const trainModeFourBtn = document.getElementById('trainModeFour') as HTMLButtonElement | null;
         const trainModeSingleBtn = document.getElementById('trainModeSingle') as HTMLButtonElement | null;
         const singleFingerPanel = document.getElementById('singleFingerPanel') as HTMLDivElement | null;
@@ -361,16 +385,21 @@ export class GameScene extends Phaser.Scene {
                         const dDisplay = document.getElementById('densityValue');
                         if (dDisplay) dDisplay.innerText = densityLabels[userPrefs.density - 1];
                     }
-                    if (userPrefs.handPosture === 'indexLeft' || userPrefs.handPosture === 'indexRight') {
+                    if (userPrefs.handPosture === 'rightUp' || userPrefs.handPosture === 'rightDown' || userPrefs.handPosture === 'leftUp' || userPrefs.handPosture === 'leftDown') {
                         this.applyHandPosture(userPrefs.handPosture);
-                        if (postureRightBtn && postureLeftBtn) {
-                            postureRightBtn.classList.toggle('selected', userPrefs.handPosture === 'indexRight');
-                            postureLeftBtn.classList.toggle('selected', userPrefs.handPosture === 'indexLeft');
-                        }
+                        postureRightUpBtn?.classList.toggle('selected', userPrefs.handPosture === 'rightUp');
+                        postureRightDownBtn?.classList.toggle('selected', userPrefs.handPosture === 'rightDown');
+                        postureLeftUpBtn?.classList.toggle('selected', userPrefs.handPosture === 'leftUp');
+                        postureLeftDownBtn?.classList.toggle('selected', userPrefs.handPosture === 'leftDown');
+                    } else if (userPrefs.handPosture === 'indexRight') {
+                        this.applyHandPosture('rightUp');
+                        postureRightUpBtn?.classList.add('selected');
+                    } else if (userPrefs.handPosture === 'indexLeft') {
+                        this.applyHandPosture('leftUp');
+                        postureLeftUpBtn?.classList.add('selected');
                     } else {
-                        this.applyHandPosture('indexRight');
-                        if (postureRightBtn) postureRightBtn.classList.add('selected');
-                        if (postureLeftBtn) postureLeftBtn.classList.remove('selected');
+                        this.applyHandPosture('rightUp');
+                        postureRightUpBtn?.classList.add('selected');
                     }
                     if (userPrefs.targetFinger === 'index' || userPrefs.targetFinger === 'middle' || userPrefs.targetFinger === 'ring' || userPrefs.targetFinger === 'pinky') {
                         this.targetFinger = userPrefs.targetFinger;
@@ -427,6 +456,9 @@ export class GameScene extends Phaser.Scene {
             const ageEl = document.getElementById('mUserAge') as HTMLInputElement | null;
             const handEl = document.getElementById('mUserHand') as HTMLSelectElement | null;
             const phaseEl = document.getElementById('mUserPhase') as HTMLInputElement | null;
+            const causeEl = document.getElementById('mUserCause') as HTMLSelectElement | null;
+            const assessmentEl = document.getElementById('mUserAssessment') as HTMLInputElement | null;
+            const complicationsEl = document.getElementById('mUserComplications') as HTMLInputElement | null;
             const msgEl = document.getElementById('mUserMsg') as HTMLDivElement | null;
             const name = nameEl?.value?.trim();
             if (!name) {
@@ -434,13 +466,18 @@ export class GameScene extends Phaser.Scene {
                 return;
             }
             try {
+                const illnessMonthsRaw = phaseEl?.value ? parseInt(phaseEl.value) : undefined;
+                const illnessDurationMonths = Number.isFinite(illnessMonthsRaw as any) ? illnessMonthsRaw : undefined;
                 const id = await createUser({
                     id: undefined,
                     name,
                     sex: (sexEl?.value as any) || undefined,
                     age: ageEl?.value ? parseInt(ageEl.value) : undefined,
-                    handDominance: (handEl?.value as any) || undefined,
-                    rehabPhase: phaseEl?.value || undefined
+                    affectedSide: (handEl?.value as any) || undefined,
+                    illnessDurationMonths,
+                    illnessCause: (causeEl?.value as any) || undefined,
+                    functionalAssessment: assessmentEl?.value?.trim() || undefined,
+                    complications: complicationsEl?.value?.trim() || undefined
                 });
                 await setSetting('currentUserId', id);
                 this.currentUserId = id;
@@ -502,6 +539,9 @@ export class GameScene extends Phaser.Scene {
             const ageEl = document.getElementById('userAge') as HTMLInputElement | null;
             const handEl = document.getElementById('userHand') as HTMLSelectElement | null;
             const phaseEl = document.getElementById('userPhase') as HTMLInputElement | null;
+            const causeEl = document.getElementById('userCause') as HTMLSelectElement | null;
+            const assessmentEl = document.getElementById('userAssessment') as HTMLInputElement | null;
+            const complicationsEl = document.getElementById('userComplications') as HTMLInputElement | null;
             const msgEl = document.getElementById('userMsg') as HTMLDivElement | null;
             const name = nameEl?.value?.trim();
             if (!name) {
@@ -509,13 +549,18 @@ export class GameScene extends Phaser.Scene {
                 return;
             }
             try {
+                const illnessMonthsRaw = phaseEl?.value ? parseInt(phaseEl.value) : undefined;
+                const illnessDurationMonths = Number.isFinite(illnessMonthsRaw as any) ? illnessMonthsRaw : undefined;
                 const id = await createUser({
                     id: undefined,
                     name,
                     sex: (sexEl?.value as any) || undefined,
                     age: ageEl?.value ? parseInt(ageEl.value) : undefined,
-                    handDominance: (handEl?.value as any) || undefined,
-                    rehabPhase: phaseEl?.value || undefined
+                    affectedSide: (handEl?.value as any) || undefined,
+                    illnessDurationMonths,
+                    illnessCause: (causeEl?.value as any) || undefined,
+                    functionalAssessment: assessmentEl?.value?.trim() || undefined,
+                    complications: complicationsEl?.value?.trim() || undefined
                 });
                 await setSetting('currentUserId', id);
                 this.currentUserId = id;
@@ -536,7 +581,7 @@ export class GameScene extends Phaser.Scene {
 
         
 
-        const densityLabels = ['20 NPM', '35 NPM', '55 NPM', '75 NPM'];
+        const densityLabels = ['入門', '簡單', '普通', '困難'];
         densityInput?.addEventListener('input', async (e) => {
             const val = parseInt((e.target as HTMLInputElement).value);
             this.currentDensity = val;
@@ -617,23 +662,44 @@ export class GameScene extends Phaser.Scene {
             }
         });
         
-        const saveHandPosture = async (val: 'indexRight' | 'indexLeft') => {
+        const saveHandPosture = async (val: HandPosture) => {
             if (this.currentUserId) {
                 const prefs = await getSetting<any>(`userPrefs_${this.currentUserId}`) || {};
                 await setSetting(`userPrefs_${this.currentUserId}`, { ...prefs, handPosture: val });
             }
         };
-        postureRightBtn?.addEventListener('click', async () => {
-            this.applyHandPosture('indexRight');
-            postureRightBtn.classList.add('selected');
-            postureLeftBtn?.classList.remove('selected');
-            await saveHandPosture('indexRight');
+
+        postureRightUpBtn?.addEventListener('click', async () => {
+            this.applyHandPosture('rightUp');
+            postureRightUpBtn.classList.add('selected');
+            postureRightDownBtn?.classList.remove('selected');
+            postureLeftUpBtn?.classList.remove('selected');
+            postureLeftDownBtn?.classList.remove('selected');
+            await saveHandPosture('rightUp');
         });
-        postureLeftBtn?.addEventListener('click', async () => {
-            this.applyHandPosture('indexLeft');
-            postureLeftBtn.classList.add('selected');
-            postureRightBtn?.classList.remove('selected');
-            await saveHandPosture('indexLeft');
+        postureRightDownBtn?.addEventListener('click', async () => {
+            this.applyHandPosture('rightDown');
+            postureRightDownBtn.classList.add('selected');
+            postureRightUpBtn?.classList.remove('selected');
+            postureLeftUpBtn?.classList.remove('selected');
+            postureLeftDownBtn?.classList.remove('selected');
+            await saveHandPosture('rightDown');
+        });
+        postureLeftUpBtn?.addEventListener('click', async () => {
+            this.applyHandPosture('leftUp');
+            postureLeftUpBtn.classList.add('selected');
+            postureRightUpBtn?.classList.remove('selected');
+            postureRightDownBtn?.classList.remove('selected');
+            postureLeftDownBtn?.classList.remove('selected');
+            await saveHandPosture('leftUp');
+        });
+        postureLeftDownBtn?.addEventListener('click', async () => {
+            this.applyHandPosture('leftDown');
+            postureLeftDownBtn.classList.add('selected');
+            postureRightUpBtn?.classList.remove('selected');
+            postureRightDownBtn?.classList.remove('selected');
+            postureLeftUpBtn?.classList.remove('selected');
+            await saveHandPosture('leftDown');
         });
 
         const saveTrainingPrefs = async (patch: Partial<{ trainingMode: TrainingMode; targetFinger: FingerName }>) => {
@@ -683,12 +749,18 @@ export class GameScene extends Phaser.Scene {
         if (userInfoText) {
             if (current) {
                 const sexMap = { male: '男', female: '女', other: '其他' };
+                const sideText = (side?: any) => side === 'left' ? '左側' : side === 'right' ? '右側' : side === 'both' ? '雙側' : '未指定';
+                const causeMap: any = { ischemic: '缺血性', hemorrhagic: '出血性', unknown: '我忘記了' };
+                const causeText = (v?: any) => (causeMap[v] || '未指定');
                 const items = [
                     { label: '姓名', value: current.name },
                     { label: '性別', value: (sexMap as any)[current.sex || ''] || '未指定' },
                     { label: '年齡', value: current.age ? `${current.age} 歲` : '未指定' },
-                    { label: '主用手', value: current.handDominance === 'left' ? '左手' : current.handDominance === 'right' ? '右手' : current.handDominance === 'both' ? '雙手' : '未指定' },
-                    { label: '康復階段', value: current.rehabPhase || '未指定' }
+                    { label: '患病側', value: sideText((current as any).affectedSide) },
+                    { label: '卒中後時間', value: (current as any).illnessDurationMonths !== undefined ? `${(current as any).illnessDurationMonths} 月` : '未指定' },
+                    { label: '腦卒中類型', value: causeText((current as any).illnessCause) },
+                    { label: '功能評估', value: (current as any).functionalAssessment || '未指定' },
+                    { label: '併發症', value: (current as any).complications || '未指定' }
                 ];
                 userInfoText.innerHTML = items.map(item => `
                     <div class="info-item">
@@ -815,19 +887,12 @@ export class GameScene extends Phaser.Scene {
     private spawnNote(lane: number, targetTimeS: number) {
         const x = this.lanes[lane];
         const note = this.add.rectangle(x, this.spawnY, 90, 25, 0x4cc9f0);
+        if (this.playMask) note.setMask(this.playMask);
         
         (note as any).lane = lane;
         (note as any).targetTimeS = targetTimeS;
         
         note.setStrokeStyle(2, 0xffffff);
-        note.setInteractive({ useHandCursor: true });
-        note.on('pointerdown', () => {
-            if (!this.isGameStarted || this.isGamePaused) return;
-            if (!this.isLaneActive(lane)) return;
-            this.lanePressStartTimes.set(lane, Date.now());
-            this.triggerLaneGlow(lane);
-            this.handleInput(lane);
-        });
         this.physics.add.existing(note);
         (note.body as Phaser.Physics.Arcade.Body).setVelocityY(this.noteSpeed);
         this.notes.push(note);
@@ -872,6 +937,7 @@ export class GameScene extends Phaser.Scene {
         note.destroy(); 
         if (this.hitSound) this.hitSound.play();
         const circle = this.add.circle(noteX, noteY, 10, 0xffffff, 0.8);
+        if (this.playMask) circle.setMask(this.playMask);
         this.hitEffects.add(circle);
         this.tweens.add({
             targets: circle, scale: 4, alpha: 0, duration: 300, onComplete: () => circle.destroy()
@@ -933,9 +999,9 @@ export class GameScene extends Phaser.Scene {
     }
 
     private showFeedback(text: string, color: number) {
-        this.feedbackText.setText(text).setTint(color).setAlpha(1).setScale(1.2).setY(300);
+        this.feedbackText.setText(text).setTint(color).setAlpha(1).setScale(0.8).setY(this.judgeY);
         this.tweens.add({
-            targets: this.feedbackText, alpha: 0, scale: 1.5, y: 250, duration: 400
+            targets: this.feedbackText, alpha: 0, scale: 1.2, y: this.judgeY - 40, duration: 400
         });
     }
 
@@ -944,9 +1010,9 @@ export class GameScene extends Phaser.Scene {
         this.comboText.setText(`COMBO: ${this.combo}`);
     }
 
-    private applyHandPosture(posture: 'indexRight' | 'indexLeft') {
+    private applyHandPosture(posture: HandPosture) {
         this.handPosture = posture;
-        this.laneKeys = posture === 'indexRight' ? ['D', 'F', 'J', 'K'] : ['K', 'J', 'F', 'D'];
+        this.laneKeys = (posture === 'rightUp' || posture === 'rightDown') ? ['D', 'F', 'J', 'K'] : ['K', 'J', 'F', 'D'];
         const labels = this.getFingerLabels();
         for (let i = 0; i < this.laneLabels.length; i++) {
             const t = this.laneLabels[i];
@@ -956,7 +1022,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     private getFingerLabels(): string[] {
-        if (this.handPosture === 'indexLeft') {
+        if (this.handPosture === 'leftUp' || this.handPosture === 'leftDown') {
             return ['食指', '中指', '無名指', '小拇指'];
         } else {
             return ['小拇指', '無名指', '中指', '食指'];
@@ -1022,8 +1088,8 @@ export class GameScene extends Phaser.Scene {
         return (map as any)[level] || 250;
     }
 
-    private fingerToLane(finger: FingerName, posture: 'indexRight' | 'indexLeft'): number {
-        const laneToFinger: FingerName[] = posture === 'indexLeft'
+    private fingerToLane(finger: FingerName, posture: HandPosture): number {
+        const laneToFinger: FingerName[] = (posture === 'leftUp' || posture === 'leftDown')
             ? ['index', 'middle', 'ring', 'pinky']
             : ['pinky', 'ring', 'middle', 'index'];
         return Math.max(0, laneToFinger.indexOf(finger));
@@ -1171,7 +1237,7 @@ export class GameScene extends Phaser.Scene {
 
         for (let i = this.notes.length - 1; i >= 0; i--) {
             const note = this.notes[i];
-            if (note.y > 650) {
+            if (note.y > this.playHeight + 50) {
                 this.notes.splice(i, 1);
                 note.destroy();
                 this.combo = 0;

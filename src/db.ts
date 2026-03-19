@@ -19,12 +19,17 @@ export interface User {
   name: string
   sex?: 'male' | 'female' | 'other'
   age?: number
-  handDominance?: 'left' | 'right' | 'both'
-  rehabPhase?: string
+  affectedSide?: 'left' | 'right' | 'both'
+  illnessDurationMonths?: number
+  illnessCause?: 'ischemic' | 'hemorrhagic' | 'unknown'
+  functionalAssessment?: string
+  complications?: string
   createdAt: string
   updatedAt?: string
   synced?: 0 | 1
 }
+
+export type HandPosture = 'rightUp' | 'rightDown' | 'leftUp' | 'leftDown'
 
 export interface Session {
   id: string
@@ -34,7 +39,7 @@ export interface Session {
   densityLevel: number
   trainingMode?: 'fourFinger' | 'singleFinger'
   targetFinger?: 'index' | 'middle' | 'ring' | 'pinky'
-  handPosture?: 'indexRight' | 'indexLeft'
+  handPosture?: HandPosture
   npmCap?: number
   minGapMs?: number
   chartAlgoVersion?: number
@@ -140,6 +145,16 @@ export class RehabDB extends Dexie {
     // 版本 5：为 sessions 增加训练模式与指头索引，便于筛选统计
     this.version(5).stores({
       sessions: 'id, userId, startedAt, synced, trainingMode, targetFinger'
+    })
+
+    this.version(6).stores({
+      users: 'id, name, createdAt, synced, affectedSide, illnessCause',
+      sessions: 'id, userId, startedAt, synced, trainingMode, targetFinger',
+      noteEvents: '++id, sessionId, synced',
+      deviceReadings: '++id, sessionId, synced',
+      features: '++id, sessionId, synced',
+      settings: 'key',
+      songs: 'id, name, updatedAt'
     })
   }
 }
@@ -362,21 +377,42 @@ export async function syncToSupabase() {
     const unsyncedUsers = await db.users.where('synced').equals(0).toArray()
     console.log(`发现 ${unsyncedUsers.length} 个未同步用户`);
     if (unsyncedUsers.length > 0) {
-      const { data, error } = await supabase.from('users').upsert(
-        unsyncedUsers.map(u => ({
-          id: u.id,
-          name: u.name,
-          sex: u.sex,
-          age: u.age,
-          hand_dominance: u.handDominance,
-          rehab_phase: u.rehabPhase,
-          created_at: u.createdAt
-        }))
-      )
-      if (error) {
-        console.error('同步用户失败:', error);
+      const payloadV2 = unsyncedUsers.map(u => ({
+        id: u.id,
+        name: u.name,
+        sex: u.sex,
+        age: u.age,
+        affected_side: u.affectedSide,
+        illness_duration_months: u.illnessDurationMonths,
+        illness_cause: u.illnessCause,
+        functional_assessment: u.functionalAssessment,
+        complications: u.complications,
+        created_at: u.createdAt
+      }))
+      const payloadV1 = unsyncedUsers.map(u => ({
+        id: u.id,
+        name: u.name,
+        sex: u.sex,
+        age: u.age,
+        created_at: u.createdAt
+      }))
+      const res2 = await supabase.from('users').upsert(payloadV2)
+      if (res2.error) {
+        const msg = (res2.error as any)?.message || String(res2.error)
+        const shouldFallback = msg.includes('column') || msg.includes('does not exist') || msg.includes('schema')
+        if (shouldFallback) {
+          const res1 = await supabase.from('users').upsert(payloadV1)
+          if (res1.error) {
+            console.error('同步用户失败:', res1.error)
+          } else {
+            console.log('同步用户成功:', res1.data)
+            await db.users.bulkUpdate(unsyncedUsers.map(u => ({ key: u.id, changes: { synced: 1 } })))
+          }
+        } else {
+          console.error('同步用户失败:', res2.error)
+        }
       } else {
-        console.log('同步用户成功:', data);
+        console.log('同步用户成功:', res2.data)
         await db.users.bulkUpdate(unsyncedUsers.map(u => ({ key: u.id, changes: { synced: 1 } })))
       }
     }
