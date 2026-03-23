@@ -1012,7 +1012,7 @@ export class GameScene extends Phaser.Scene {
 
     private applyHandPosture(posture: HandPosture) {
         this.handPosture = posture;
-        this.laneKeys = (posture === 'rightUp' || posture === 'rightDown') ? ['D', 'F', 'J', 'K'] : ['K', 'J', 'F', 'D'];
+        this.laneKeys = (posture === 'rightDown' || posture === 'leftUp') ? ['K', 'J', 'F', 'D'] : ['D', 'F', 'J', 'K'];
         const labels = this.getFingerLabels();
         for (let i = 0; i < this.laneLabels.length; i++) {
             const t = this.laneLabels[i];
@@ -1022,7 +1022,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     private getFingerLabels(): string[] {
-        if (this.handPosture === 'leftUp' || this.handPosture === 'leftDown') {
+        if (this.handPosture === 'rightDown' || this.handPosture === 'leftUp') {
             return ['食指', '中指', '無名指', '小拇指'];
         } else {
             return ['小拇指', '無名指', '中指', '食指'];
@@ -1089,7 +1089,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     private fingerToLane(finger: FingerName, posture: HandPosture): number {
-        const laneToFinger: FingerName[] = (posture === 'leftUp' || posture === 'leftDown')
+        const laneToFinger: FingerName[] = (posture === 'rightDown' || posture === 'leftUp')
             ? ['index', 'middle', 'ring', 'pinky']
             : ['pinky', 'ring', 'middle', 'index'];
         return Math.max(0, laneToFinger.indexOf(finger));
