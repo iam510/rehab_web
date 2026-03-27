@@ -1,54 +1,153 @@
 # Rehab Rhythm - Web Client
 
-这是“康复音游”项目的 Web 前端部分。采用现代化的前端工具链开发，旨在提供流畅的康复训练体验和精细的数据采集功能。
+康复节奏训练 Web 应用。项目以 Phaser 3 为核心，结合 Dexie(IndexedDB) 做本地训练数据落盘，并通过 Supabase 做云端同步；支持 PWA 离线缓存，可在弱网或断网场景下继续训练。
 
-## 🛠 技术栈
+## 项目特性
 
-- **游戏引擎**: [Phaser 3](https://phaser.io/) - 负责高性能的游戏渲染与输入处理。
-- **构建工具**: [Vite](https://vitejs.dev/) - 提供极速的开发环境与优化后的构建产物。
-- **编程语言**: [TypeScript](https://www.typescriptlang.org/) - 确保代码的健壮性与可维护性。
-- **本地数据库**: [Dexie.js](https://dexie.org/) - 基于 IndexedDB，用于本地海量采样数据的存储与缓存。
-- **后端同步**: [Supabase](https://supabase.com/) - 提供云端数据持久化、用户同步及音频存储。
-- **离线支持**: [Vite PWA](https://vite-pwa-org.netlify.app/) - 使得应用可以作为桌面/移动端应用安装，并支持离线训练。
+- 4 轨节奏训练，支持键盘 `D F J K` 与点击触控
+- 手姿势模式：`leftUp` / `rightUp` / `rightDown` / `leftDown`
+- 训练模式：四指训练、单指训练（食指/中指/无名指/小拇指）
+- 用户管理：新建、切换、删除用户，保存个人训练偏好
+- 本地数据：用户、会话、击打事件等写入 IndexedDB
+- 云端同步：按周期自动同步用户/会话/音符事件到 Supabase
+- 歌曲来源：内置静态歌曲 + 云端动态歌曲
+- PWA：生产环境自动注册 Service Worker，支持安装和离线缓存
 
-## 📦 快速开始
+## 技术栈
 
-### 1. 安装依赖
+- 前端与构建：Vite 7 + TypeScript 5
+- 游戏引擎：Phaser 3
+- 本地数据库：Dexie 4 (IndexedDB)
+- 云端服务：Supabase (`@supabase/supabase-js`)
+- PWA：vite-plugin-pwa (Workbox)
+
+## 目录结构
+
+```text
+.
+├─ index.html                # 外层 UI 容器（设置栏、Overlay、用户面板）
+├─ src/
+│  ├─ main.ts                # 应用入口，歌曲同步、SW 注册、启动场景
+│  ├─ GameScene.ts           # Phaser 主场景与训练逻辑
+│  ├─ db.ts                  # Dexie 数据模型、业务接口、Supabase 同步
+│  └─ style.css              # 整体 UI 样式
+├─ public/assets/
+│  ├─ images/                # 手姿势图片等静态资源
+│  ├─ sounds/                # 打击音效
+│  └─ songs/                 # 内置歌曲（音频 + 谱面）
+└─ vite.config.ts            # Vite + PWA 配置
+```
+
+## 环境要求
+
+- Node.js 18+
+- npm 9+
+
+## 快速开始
+
+1. 安装依赖
+
 ```bash
 npm install
 ```
 
-### 2. 配置环境变量
-在根目录创建 `.env` 文件，并配置你的 Supabase 密钥：
+2. 创建环境变量文件 `.env`
+
 ```env
-VITE_SUPABASE_URL=你的Supabase项目地址
-VITE_SUPABASE_ANON_KEY=你的Supabase匿名密钥
+VITE_SUPABASE_URL=你的_supabase_url
+VITE_SUPABASE_ANON_KEY=你的_supabase_anon_key
 ```
 
-### 3. 本地开发
+如果未配置以上变量，应用仍可运行本地训练流程，但云端同步与云端歌曲同步会受限（控制台会出现警告）。
+
+3. 启动开发环境
+
 ```bash
 npm run dev
 ```
 
-### 4. 生产构建
+4. 构建生产包
+
 ```bash
 npm run build
 ```
 
-## 📐 核心机制说明
+5. 本地预览生产构建
 
-### 数据同步流
-1. **启动阶段**: 自动调用 `syncSongs()` 从云端同步最新的歌曲列表至本地 IndexedDB。
-2. **训练阶段**: 游戏实时记录每个 Note 的击打偏移（ms）和按键持续时间，存入本地 `note_events` 表。
-3. **同步阶段**: 应用每隔 30 秒自动尝试将本地未同步的 `sessions` 和 `note_events` 推送到 Supabase 云端。
+```bash
+npm run preview
+```
 
-### 资源加载机制
-- **内置歌曲**: 存放于 `public/assets/songs/`，通过静态路径加载。
-- **动态歌曲**: 歌曲元数据与谱面 JSON 存储在数据库中，音频文件通过 Supabase Storage 的公网 URL 加载。
+## 数据与同步说明
 
-## 🌐 部署
+### 本地数据库（Dexie）
 
-本项目适配 Vercel 部署。在部署时，请务必在 Vercel 后台添加 `VITE_SUPABASE_URL` 和 `VITE_SUPABASE_ANON_KEY` 环境变量。
+数据库名：`rehab-db`
+
+主要表：
+
+- `users`：用户基础信息与病程相关字段
+- `sessions`：每局训练会话汇总
+- `noteEvents`：音符级击打事件（偏移、判定、按压时长），同步后自动清理
+- `features`：特征数据（预留）
+- `settings`：键值配置（当前用户、用户偏好等）
+- `songs`：云端歌曲缓存
+
+### 同步流程
+
+- 启动时调用 `syncSongs()` 拉取 Supabase `songs` 表并缓存到本地
+- 游戏中记录训练数据到本地表，默认标记 `synced = 0`
+- 进入场景后启动同步循环：每 30 秒执行 `syncToSupabase()`
+- 同步顺序：`users` -> `sessions` -> `note_events`，并处理外键依赖
+- 同步成功后将本地记录标记为 `synced = 1`，**`noteEvents` 同步成功后自动从本地删除以节省存储空间**
+
+## 歌曲加载机制
+
+- 内置歌曲：从 `public/assets/songs/<songId>/` 加载 `audio.mp3` 与 `chart_level_4.json`
+- 云端歌曲：由 Supabase 返回 `audio_url` 与 `levels`，运行时注入 Phaser JSON 缓存并加载音频 URL
+
+## PWA 与缓存策略
+
+- 开发模式：主动清理历史 Service Worker 与 Cache，避免调试缓存干扰
+- 生产模式：自动注册 SW（`registerType: autoUpdate`）
+- Workbox 关键策略：
+- 导航请求使用 `NetworkFirst`
+- 歌曲与音效资源使用 `CacheFirst`
+- 提升缓存文件体积上限以适配音频资源
+
+## 目前脚本命令
+
+- `npm run dev`：启动开发服务器
+- `npm run build`：TypeScript 检查并打包
+- `npm run preview`：预览打包产物
+
+## 部署建议
+
+- 可部署到 Vercel、Netlify 或任意静态托管平台
+- 需要在部署平台配置：
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+- 首次上线建议手动清理旧缓存（若曾使用过早期 SW 策略）
+
+## 常见问题
+
+1. 启动后看不到云端歌曲
+
+- 检查 Supabase 环境变量是否正确
+- 检查 `songs` 表字段是否包含 `id/name/audio_url/levels/updated_at`
+- 打开浏览器控制台查看 `syncSongs` 日志
+
+2. 数据没有同步到云端
+
+- 检查网络与 Supabase 表权限(RLS)
+- 确认 `users` 成功同步后 `sessions` 才会继续同步
+- 确认 `sessions` 同步后 `note_events` 才会继续同步
+
+3. 开发时缓存导致页面内容异常
+
+- 项目在开发模式会自动注销 SW 并清缓存
+- 如仍异常，可手动在浏览器 Application 面板清理 Service Worker 与 Cache Storage
 
 ---
+
 Developed for Rehabilitation Training.

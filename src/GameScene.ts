@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { startSession, endSession, addNoteEvents, db, listUsers, createUser, getSetting, setSetting, deleteUserCascade, migrateToUUID, syncToSupabase, type HandPosture } from './db';
+import { startSession, endSession, addNoteEvents, calculateFingerStats, formatDateISO, db, listUsers, createUser, getSetting, setSetting, deleteUserCascade, migrateToUUID, syncToSupabase, type HandPosture } from './db';
 
 interface NoteInfo {
     time: number;
@@ -64,6 +64,7 @@ export class GameScene extends Phaser.Scene {
     private currentUserId?: string;
 
     private currentSessionId?: string;
+    private currentGameTargetFinger?: 'index' | 'middle' | 'ring' | 'pinky';
     private perfectCount = 0;
     private goodCount = 0;
     private missCount = 0;
@@ -835,6 +836,8 @@ export class GameScene extends Phaser.Scene {
         this.missCount = 0;
         this.maxCombo = 0;
         this.offsetsMs = [];
+        // 单指模式下保存目标手指，以确保 NoteEvent 的 targetFinger 与 Session 一致
+        this.currentGameTargetFinger = this.trainingMode === 'singleFinger' ? this.targetFinger : undefined;
         this.updateUI();
 
         if (this.currentBgm) this.currentBgm.stop();
@@ -848,9 +851,6 @@ export class GameScene extends Phaser.Scene {
         this.physics.resume();
 
         const songName = this.songs.find(s => s.id === this.currentSongId)?.name || this.currentSongId;
-        const masterLevel = masterKey ? parseInt(masterKey.split('-').pop() || '') : undefined;
-        const npmCap = this.getNpmCap(this.currentDensity);
-        const minGapMs = this.trainingMode === 'singleFinger' ? this.getSingleMinGapMs(this.currentDensity) : 0;
         this.currentSessionId = await startSession({
             userId: this.currentUserId || 'local-user',
             songId: this.currentSongId,
@@ -859,12 +859,12 @@ export class GameScene extends Phaser.Scene {
             trainingMode: this.trainingMode,
             targetFinger: this.trainingMode === 'singleFinger' ? this.targetFinger : undefined,
             handPosture: this.handPosture,
-            npmCap,
-            minGapMs,
-            chartAlgoVersion: 1,
-            masterChartLevel: Number.isFinite(masterLevel as any) ? (masterLevel as any) : undefined,
-            generatedNoteCount: this.chartData.length
+            generatedNoteCount: this.chartData.length,
+            trainingDate: formatDateISO()
         });
+
+        // 单指模式下保存目标手指，以便 NoteEvent 使用
+        this.currentGameTargetFinger = this.trainingMode === 'singleFinger' ? this.targetFinger : undefined;
 
         if (this.timerEvent) this.timerEvent.destroy();
         this.timerEvent = this.time.addEvent({
@@ -964,9 +964,13 @@ export class GameScene extends Phaser.Scene {
         this.updateUI();
         if (this.currentSessionId) {
             const lane = (note as any).lane ?? 0;
+            // 在单指模式下，所有 NoteEvent 都应该使用 currentGameTargetFinger
+            // 在四指模式下，根据 lane 和 handPosture 计算 targetFinger
+            const targetFinger = this.currentGameTargetFinger || this.laneToFinger(lane, this.handPosture);
             const events = await addNoteEvents(this.currentSessionId, [{
                 sessionId: this.currentSessionId,
                 lane,
+                targetFinger,
                 targetTimeS: targetTimeS ?? hitTimeS,
                 hitTimeS,
                 offsetMs,
@@ -1095,6 +1099,13 @@ export class GameScene extends Phaser.Scene {
         return Math.max(0, laneToFinger.indexOf(finger));
     }
 
+    private laneToFinger(lane: number, posture: HandPosture): FingerName {
+        const laneToFinger: FingerName[] = (posture === 'rightDown' || posture === 'leftUp')
+            ? ['index', 'middle', 'ring', 'pinky']
+            : ['pinky', 'ring', 'middle', 'index'];
+        return laneToFinger[lane] || 'index';
+    }
+
     private getGeneratedChart(songId: string, masterNotes: any[]): NoteInfo[] {
         const npmCap = this.getNpmCap(this.currentDensity);
         const minGapMs = this.trainingMode === 'singleFinger' ? this.getSingleMinGapMs(this.currentDensity) : 0;
@@ -1201,6 +1212,8 @@ export class GameScene extends Phaser.Scene {
         const std = Math.sqrt(variance);
         const durationSec = Math.max(0, this.gameTime - this.currentTime);
         if (this.currentSessionId) {
+            // 计算手指成功统计
+            const fingerStats = await calculateFingerStats(this.currentSessionId);
             await endSession(this.currentSessionId, {
                 durationSec,
                 score: this.score,
@@ -1210,8 +1223,12 @@ export class GameScene extends Phaser.Scene {
                 missCount: this.missCount,
                 avgOffsetMs: Math.round(avg),
                 stdOffsetMs: Math.round(std),
-                maxCombo: this.maxCombo
+                maxCombo: this.maxCombo,
+                fingerSuccessCount: fingerStats.successCount,
+                fingerSuccessRate: fingerStats.successRate
             });
+            // 清理当前会话的目标手指
+            this.currentGameTargetFinger = undefined;
         }
     }
 
@@ -1247,9 +1264,13 @@ export class GameScene extends Phaser.Scene {
                 if (this.currentSessionId) {
                     const targetTimeS = (note as any).targetTimeS as number | undefined;
                     const lane = (note as any).lane ?? 0;
+                    // 在单指模式下，所有 NoteEvent 都应该使用 currentGameTargetFinger
+                    // 在四指模式下，根据 lane 和 handPosture 计算 targetFinger
+                    const targetFinger = this.currentGameTargetFinger || this.laneToFinger(lane, this.handPosture);
                     addNoteEvents(this.currentSessionId, [{
                         sessionId: this.currentSessionId,
                         lane,
+                        targetFinger,
                         targetTimeS: targetTimeS ?? 0,
                         judgement: 'miss'
                     }]);

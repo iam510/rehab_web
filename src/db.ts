@@ -40,11 +40,20 @@ export interface Session {
   trainingMode?: 'fourFinger' | 'singleFinger'
   targetFinger?: 'index' | 'middle' | 'ring' | 'pinky'
   handPosture?: HandPosture
-  npmCap?: number
-  minGapMs?: number
-  chartAlgoVersion?: number
-  masterChartLevel?: number
   generatedNoteCount?: number
+  fingerSuccessCount?: {
+    index?: number
+    middle?: number
+    ring?: number
+    pinky?: number
+  }
+  fingerSuccessRate?: {
+    index?: number
+    middle?: number
+    ring?: number
+    pinky?: number
+  }
+  trainingDate?: string
   startedAt: string
   endedAt?: string
   durationSec?: number
@@ -64,22 +73,12 @@ export interface NoteEvent {
   id?: number
   sessionId: string
   lane: number
+  targetFinger?: 'index' | 'middle' | 'ring' | 'pinky'
   targetTimeS: number
   hitTimeS?: number
   offsetMs?: number
   pressDurationMs?: number
   judgement?: Judgement
-  synced?: 0 | 1
-}
-
-export interface DeviceReading {
-  id?: number
-  sessionId: string
-  tMs: number
-  deviceId: string
-  sensorType: string
-  value: unknown
-  tags?: Record<string, unknown>
   synced?: 0 | 1
 }
 
@@ -112,7 +111,6 @@ export class RehabDB extends Dexie {
   users!: Table<User, string>
   sessions!: Table<Session, string>
   noteEvents!: Table<NoteEvent, number>
-  deviceReadings!: Table<DeviceReading, number>
   features!: Table<Feature, number>
   settings!: Table<SettingKV, string>
   songs!: Table<SongData, string>
@@ -132,7 +130,6 @@ export class RehabDB extends Dexie {
       users: 'id, name, createdAt, synced',
       sessions: 'id, userId, startedAt, synced',
       noteEvents: '++id, sessionId, synced',
-      deviceReadings: '++id, sessionId, synced',
       features: '++id, sessionId, synced',
       settings: 'key'
     })
@@ -151,7 +148,6 @@ export class RehabDB extends Dexie {
       users: 'id, name, createdAt, synced, affectedSide, illnessCause',
       sessions: 'id, userId, startedAt, synced, trainingMode, targetFinger',
       noteEvents: '++id, sessionId, synced',
-      deviceReadings: '++id, sessionId, synced',
       features: '++id, sessionId, synced',
       settings: 'key',
       songs: 'id, name, updatedAt'
@@ -261,11 +257,8 @@ export async function startSession(input: {
   trainingMode?: Session['trainingMode']
   targetFinger?: Session['targetFinger']
   handPosture?: Session['handPosture']
-  npmCap?: number
-  minGapMs?: number
-  chartAlgoVersion?: number
-  masterChartLevel?: number
   generatedNoteCount?: number
+  trainingDate?: string
 }) {
   const id = genId()
   const now = getBeijingTimeISO()
@@ -292,14 +285,6 @@ export async function endSession(sessionId: string, summary: Partial<Session>) {
 export async function addNoteEvents(sessionId: string, events: NoteEvent[]) {
   const payload: NoteEvent[] = events.map(e => ({ ...e, sessionId, synced: 0 }))
   return db.noteEvents.bulkAdd(payload, { allKeys: true })
-}
-
-export async function addDeviceReadings(
-  sessionId: string,
-  rows: DeviceReading[]
-) {
-  const payload: DeviceReading[] = rows.map(r => ({ ...r, sessionId, synced: 0 }))
-  await db.deviceReadings.bulkAdd(payload)
 }
 
 export async function addFeatures(sessionId: string, feats: Feature[]) {
@@ -434,10 +419,6 @@ export async function syncToSupabase() {
         training_mode: s.trainingMode,
         target_finger: s.targetFinger,
         hand_posture: s.handPosture,
-        npm_cap: s.npmCap,
-        min_gap_ms: s.minGapMs,
-        chart_algo_version: s.chartAlgoVersion,
-        master_chart_level: s.masterChartLevel,
         generated_note_count: s.generatedNoteCount,
         started_at: s.startedAt,
         ended_at: s.endedAt,
@@ -449,7 +430,10 @@ export async function syncToSupabase() {
         miss_count: s.missCount,
         avg_offset_ms: s.avgOffsetMs,
         std_offset_ms: s.stdOffsetMs,
-        max_combo: s.maxCombo
+        max_combo: s.maxCombo,
+        finger_success_count: s.fingerSuccessCount,
+        finger_success_rate: s.fingerSuccessRate,
+        training_date: s.trainingDate
       }))
       const payloadV1 = unsyncedSessions.map(s => ({
         id: s.id,
@@ -503,6 +487,7 @@ export async function syncToSupabase() {
         unsyncedEvents.map(e => ({
           session_id: e.sessionId,
           lane: e.lane,
+          target_finger: e.targetFinger,
           target_time_s: e.targetTimeS,
           hit_time_s: e.hitTimeS,
           offset_ms: e.offsetMs,
@@ -515,9 +500,66 @@ export async function syncToSupabase() {
       } else {
         console.log('同步音符事件成功:', data);
         await db.noteEvents.bulkUpdate(unsyncedEvents.map(e => ({ key: e.id!, changes: { synced: 1 } })))
+        // 同步成功后删除本地已同步的 noteEvents，释放存储空间
+        const syncedEventIds = unsyncedEvents.map(e => e.id!)
+        await db.noteEvents.bulkDelete(syncedEventIds)
+        console.log(`已删除 ${syncedEventIds.length} 条本地音符事件`);
       }
     }
   } catch (err) {
     console.error('Supabase Sync Error:', err)
   }
+}
+
+// --- 数据分析函数 ---
+
+/**
+ * 根据会话中的 NoteEvent 计算每个手指的成功次数和成功率
+ * 使用 NoteEvent 中的 targetFinger 字段进行统计
+ */
+export async function calculateFingerStats(sessionId: string) {
+  const events = await db.noteEvents.where('sessionId').equals(sessionId).toArray()
+  
+  // 初始化计数器
+  const fingerStats = {
+    index: { success: 0, total: 0 },
+    middle: { success: 0, total: 0 },
+    ring: { success: 0, total: 0 },
+    pinky: { success: 0, total: 0 }
+  }
+
+  // 统计每个手指的成功和总次数
+  for (const event of events) {
+    const finger = event.targetFinger
+    if (!finger || !fingerStats[finger]) continue
+
+    fingerStats[finger].total++
+    if (event.judgement === 'perfect' || event.judgement === 'good') {
+      fingerStats[finger].success++
+    }
+  }
+
+  // 计算成功率（百分比）
+  const successCount = {
+    index: fingerStats.index.success,
+    middle: fingerStats.middle.success,
+    ring: fingerStats.ring.success,
+    pinky: fingerStats.pinky.success
+  }
+
+  const successRate = {
+    index: fingerStats.index.total > 0 ? Math.round((fingerStats.index.success / fingerStats.index.total) * 100) : 0,
+    middle: fingerStats.middle.total > 0 ? Math.round((fingerStats.middle.success / fingerStats.middle.total) * 100) : 0,
+    ring: fingerStats.ring.total > 0 ? Math.round((fingerStats.ring.success / fingerStats.ring.total) * 100) : 0,
+    pinky: fingerStats.pinky.total > 0 ? Math.round((fingerStats.pinky.success / fingerStats.pinky.total) * 100) : 0
+  }
+
+  return { successCount, successRate }
+}
+
+/**
+ * 生成 YYYY-MM-DD 格式的日期字符串（本地时间）
+ */
+export function formatDateISO(date: Date = new Date()) {
+  return date.toISOString().split('T')[0]
 }
