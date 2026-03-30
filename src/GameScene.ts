@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { startSession, endSession, addNoteEvents, calculateFingerStats, formatDateISO, db, listUsers, createUser, getSetting, setSetting, deleteUserCascade, migrateToUUID, syncToSupabase, type HandPosture } from './db';
+import { startSession, endSession, addNoteEvents, calculateFingerStats, calculateFingerAvgOffsetMs, formatDateISO, db, listUsers, createUser, getSetting, setSetting, deleteUserCascade, migrateToUUID, syncToSupabase, type HandPosture } from './db';
 
 interface NoteInfo {
     time: number;
@@ -1207,13 +1207,14 @@ export class GameScene extends Phaser.Scene {
         document.getElementById('game-over-overlay')?.classList.remove('hidden');
         const total = this.perfectCount + this.goodCount + this.missCount;
         const hitRate = total > 0 ? (this.perfectCount + this.goodCount) / total : 0;
-        const avg = this.offsetsMs.length > 0 ? this.offsetsMs.reduce((a, b) => a + b, 0) / this.offsetsMs.length : 0;
-        const variance = this.offsetsMs.length > 1 ? this.offsetsMs.reduce((s, v) => s + (v - avg) * (v - avg), 0) / (this.offsetsMs.length - 1) : 0;
+        const avg = this.offsetsMs.length > 0 ? this.offsetsMs.reduce((a, b) => a + Math.abs(b), 0) / this.offsetsMs.length : 0;
+        const variance = this.offsetsMs.length > 1 ? this.offsetsMs.reduce((s, v) => s + (Math.abs(v) - avg) * (Math.abs(v) - avg), 0) / (this.offsetsMs.length - 1) : 0;
         const std = Math.sqrt(variance);
         const durationSec = Math.max(0, this.gameTime - this.currentTime);
         if (this.currentSessionId) {
             // 计算手指成功统计
             const fingerStats = await calculateFingerStats(this.currentSessionId);
+            const fingerAvgOffsetMs = await calculateFingerAvgOffsetMs(this.currentSessionId);
             await endSession(this.currentSessionId, {
                 durationSec,
                 score: this.score,
@@ -1225,7 +1226,8 @@ export class GameScene extends Phaser.Scene {
                 stdOffsetMs: Math.round(std),
                 maxCombo: this.maxCombo,
                 fingerSuccessCount: fingerStats.successCount,
-                fingerSuccessRate: fingerStats.successRate
+                fingerSuccessRate: fingerStats.successRate,
+                fingerAvgOffsetMs
             });
             // 清理当前会话的目标手指
             this.currentGameTargetFinger = undefined;

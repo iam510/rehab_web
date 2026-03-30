@@ -53,6 +53,12 @@ export interface Session {
     ring?: number
     pinky?: number
   }
+  fingerAvgOffsetMs?: {
+    index?: number
+    middle?: number
+    ring?: number
+    pinky?: number
+  }
   trainingDate?: string
   startedAt: string
   endedAt?: string
@@ -433,6 +439,7 @@ export async function syncToSupabase() {
         max_combo: s.maxCombo,
         finger_success_count: s.fingerSuccessCount,
         finger_success_rate: s.fingerSuccessRate,
+        finger_avg_offset_ms: s.fingerAvgOffsetMs,
         training_date: s.trainingDate
       }))
       const payloadV1 = unsyncedSessions.map(s => ({
@@ -519,7 +526,7 @@ export async function syncToSupabase() {
  */
 export async function calculateFingerStats(sessionId: string) {
   const events = await db.noteEvents.where('sessionId').equals(sessionId).toArray()
-  
+
   // 初始化计数器
   const fingerStats = {
     index: { success: 0, total: 0 },
@@ -555,6 +562,41 @@ export async function calculateFingerStats(sessionId: string) {
   }
 
   return { successCount, successRate }
+}
+
+/**
+ * 根据会话中的 NoteEvent 计算每个手指的平均偏移时间
+ * 使用 NoteEvent 中的 targetFinger 和 offsetMs 字段进行统计
+ */
+export async function calculateFingerAvgOffsetMs(sessionId: string) {
+  const events = await db.noteEvents.where('sessionId').equals(sessionId).toArray()
+
+  // 初始化计数器
+  const fingerOffsets = {
+    index: [] as number[],
+    middle: [] as number[],
+    ring: [] as number[],
+    pinky: [] as number[]
+  }
+
+  // 收集每个手指的偏移时间
+  for (const event of events) {
+    const finger = event.targetFinger
+    const offsetMs = event.offsetMs
+    if (!finger || !fingerOffsets[finger] || offsetMs === undefined) continue
+
+    fingerOffsets[finger].push(Math.abs(offsetMs))
+  }
+
+  // 计算每个手指的平均偏移时间
+  const fingerAvgOffsetMs = {
+    index: fingerOffsets.index.length > 0 ? Math.round(fingerOffsets.index.reduce((a, b) => a + b, 0) / fingerOffsets.index.length) : 0,
+    middle: fingerOffsets.middle.length > 0 ? Math.round(fingerOffsets.middle.reduce((a, b) => a + b, 0) / fingerOffsets.middle.length) : 0,
+    ring: fingerOffsets.ring.length > 0 ? Math.round(fingerOffsets.ring.reduce((a, b) => a + b, 0) / fingerOffsets.ring.length) : 0,
+    pinky: fingerOffsets.pinky.length > 0 ? Math.round(fingerOffsets.pinky.reduce((a, b) => a + b, 0) / fingerOffsets.pinky.length) : 0
+  }
+
+  return fingerAvgOffsetMs
 }
 
 /**
